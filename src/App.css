@@ -104,6 +104,8 @@ body {
   flex-shrink: 0;
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
+  position: relative;
+  z-index: 10;
 }
 
 .header-content {
@@ -188,6 +190,7 @@ body {
 /* Export Menu */
 .export-menu-container {
   position: relative;
+  z-index: 100;
 }
 
 .export-btn,
@@ -225,11 +228,11 @@ body {
   right: 0;
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   padding: 0.5rem;
   min-width: 200px;
-  z-index: 100;
+  z-index: 1000;
   animation: slideDown 0.2s ease-out;
 }
 
