@@ -423,7 +423,8 @@ body {
 }
 
 .export-btn,
-.focus-btn {
+.focus-btn,
+.preview-btn {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -440,14 +441,16 @@ body {
 }
 
 .export-btn:hover,
-.focus-btn:hover {
+.focus-btn:hover,
+.preview-btn:hover {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
   border-color: var(--text-tertiary);
 }
 
 .export-btn:active,
-.focus-btn:active {
+.focus-btn:active,
+.preview-btn:active {
   background-color: var(--bg-primary);
 }
 
@@ -1099,6 +1102,144 @@ kbd {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Markdown Split View Styles */
+.editor-container.split-view {
+  display: flex;
+  flex-direction: row;
+}
+
+.split-left {
+  flex: 1;
+  border-right: 1px solid var(--border-color);
+  padding: 3rem;
+}
+
+.split-right {
+  flex: 1;
+  padding: 3rem;
+  overflow-y: auto;
+  background-color: var(--bg-card);
+}
+
+.preview-btn.active {
+  background-color: var(--accent-light);
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.markdown-preview {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+/* Base Markdown Font Sizes inheriting from editor setting */
+.markdown-preview.font-small {
+  font-size: 0.875rem;
+}
+
+.markdown-preview.font-medium {
+  font-size: 1rem;
+}
+
+.markdown-preview.font-large {
+  font-size: 1.125rem;
+}
+
+.markdown-preview h1, 
+.markdown-preview h2, 
+.markdown-preview h3, 
+.markdown-preview h4, 
+.markdown-preview h5, 
+.markdown-preview h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.markdown-preview h1 { font-size: 2em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
+.markdown-preview h2 { font-size: 1.5em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
+.markdown-preview h3 { font-size: 1.25em; }
+
+.markdown-preview p {
+  margin-bottom: 1em;
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  margin-bottom: 1em;
+  padding-left: 2em;
+}
+
+.markdown-preview li {
+  margin-bottom: 0.25em;
+}
+
+.markdown-preview blockquote {
+  border-left: 4px solid var(--accent-light);
+  padding-left: 1em;
+  color: var(--text-secondary);
+  background-color: var(--bg-sidebar);
+  margin-left: 0;
+  margin-right: 0;
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+  border-radius: 4px;
+}
+
+.markdown-preview pre {
+  background-color: var(--bg-sidebar);
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+.markdown-preview code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  background-color: var(--bg-sidebar);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.markdown-preview pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.85em;
+}
+
+.markdown-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1em;
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  border: 1px solid var(--border-color);
+  padding: 0.5em 1em;
+  text-align: left;
+}
+
+.markdown-preview th {
+  background-color: var(--bg-sidebar);
+  font-weight: 600;
+}
+
+.markdown-preview img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.markdown-preview hr {
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  margin: 2em 0;
 }
 
 /* Print Styles */

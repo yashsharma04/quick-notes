@@ -8,6 +8,8 @@ import {
   createNoteFile,
   deleteNoteFile
 } from './FileSystemManager'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './App.css'
 
 function App() {
@@ -20,6 +22,7 @@ function App() {
   const [fontSize, setFontSize] = useState('medium') // small, medium, large
   const [focusMode, setFocusMode] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [isPreviewMode, setIsPreviewMode] = useState(false)
 
   // Modal State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -388,6 +391,16 @@ function App() {
                   )}
                 </div>
 
+                {/* Preview Mode Toggle */}
+                <button
+                  onClick={() => setIsPreviewMode(!isPreviewMode)}
+                  className={`preview-btn ${isPreviewMode ? 'active' : ''}`}
+                  title="Toggle Markdown Preview"
+                >
+                  <span className="btn-icon">👁️</span>
+                  <span className="btn-text">Preview</span>
+                </button>
+
                 {/* Focus Mode Toggle */}
                 <button
                   onClick={() => setFocusMode(!focusMode)}
@@ -407,15 +420,23 @@ function App() {
             </div>
           </header>
 
-          <main className="editor-container">
+          <main className={`editor-container ${isPreviewMode ? 'split-view' : ''}`}>
             <textarea
               ref={textareaRef}
-              className={`editor font-${fontSize} ${focusMode ? 'focus-mode' : ''}`}
+              className={`editor font-${fontSize} ${focusMode ? 'focus-mode' : ''} ${isPreviewMode ? 'split-left' : ''}`}
               value={getActiveNote().content || ''}
               onChange={handleChange}
               placeholder="Start typing..."
               spellCheck="true"
             />
+
+            {isPreviewMode && (
+              <div className={`markdown-preview font-${fontSize} split-right`}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {getActiveNote().content || ''}
+                </ReactMarkdown>
+              </div>
+            )}
 
             {showMilestone && (
               <div className="milestone-badge">
