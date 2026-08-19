@@ -27,4 +27,4 @@ https://dash.cloudflare.com/
 
 ---
 
-Last production deploy: 19 Aug 2026 (Buy me a coffee + Polar functions)
+Last production deploy: 19 Aug 2026 (search, pins, tags, templates, zip backup)
