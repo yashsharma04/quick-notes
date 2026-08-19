@@ -1,16 +1,59 @@
 import { useState, useEffect, useRef } from 'react'
 import Sidebar from './Sidebar'
 import ConfirmationModal from './ConfirmationModal'
+import SearchPalette from './SearchPalette'
 import {
   openDirectory,
   readNotesFromDirectory,
   saveNoteToFile,
-  createNoteFile,
   deleteNoteFile
 } from './FileSystemManager'
+import {
+  collectTags,
+  mergeRestoredNotes,
+  normalizeNote,
+  sortNotes,
+  toggleTag,
+  withContentChange
+} from './notes/model.js'
+import { applyTemplate } from './notes/templates.js'
+import { unzipBrowserNotes, zipBrowserNotes } from './notes/zip.js'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './App.css'
+
+const FILE_META_KEY = 'quickNoteFileMeta'
+
+function loadFileMeta() {
+  try {
+    return JSON.parse(localStorage.getItem(FILE_META_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function saveFileMetaForNotes(notes) {
+  const meta = {}
+  for (const note of notes) {
+    if (!note.fileHandle) continue
+    meta[note.id] = {
+      title: note.title,
+      pinned: note.pinned,
+      tags: note.tags || [],
+    }
+  }
+  localStorage.setItem(FILE_META_KEY, JSON.stringify(meta))
+}
+
+function mergeFolderNotes(folderNotes, meta) {
+  return folderNotes.map((note) => normalizeNote({
+    ...note,
+    ...(meta[note.id] || {}),
+    fileHandle: note.fileHandle,
+    id: note.id,
+    content: note.content,
+  }))
+}
 
 function App() {
   const [notes, setNotes] = useState([])
@@ -19,75 +62,96 @@ function App() {
   const [justSaved, setJustSaved] = useState(false)
   const [showMilestone, setShowMilestone] = useState(false)
   const [milestoneText, setMilestoneText] = useState('')
-  const [fontSize, setFontSize] = useState('medium') // small, medium, large
+  const [fontSize, setFontSize] = useState('medium')
   const [focusMode, setFocusMode] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [tagFilter, setTagFilter] = useState(null)
+  const [jumpTo, setJumpTo] = useState(null)
+  const [tagDraft, setTagDraft] = useState('')
 
-  // Modal State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [noteToDelete, setNoteToDelete] = useState(null)
 
-  // Local Sync State
   const [isLocalMode, setIsLocalMode] = useState(false)
   const [dirHandle, setDirHandle] = useState(null)
 
   const textareaRef = useRef(null)
 
-  // Load content and preferences from localStorage on mount
   useEffect(() => {
     const savedFontSize = localStorage.getItem('quickNoteFontSize')
     if (savedFontSize) {
       setFontSize(savedFontSize)
     }
 
-    // Migration and Loading Logic
     const savedNotes = JSON.parse(localStorage.getItem('quickNotes') || '[]')
     const oldContent = localStorage.getItem('quickNoteContent')
 
     if (savedNotes.length > 0) {
-      setNotes(savedNotes)
-      setActiveNoteId(savedNotes[0].id)
+      const normalized = sortNotes(savedNotes.map(normalizeNote))
+      setNotes(normalized)
+      setActiveNoteId(normalized[0].id)
     } else if (oldContent) {
-      // Migrate old content to new note format
-      const newNote = {
+      const newNote = normalizeNote({
         id: Date.now().toString(),
         title: oldContent.split('\n')[0] || 'Untitled Note',
         content: oldContent,
         lastModified: Date.now()
-      }
+      })
       setNotes([newNote])
       setActiveNoteId(newNote.id)
       localStorage.setItem('quickNotes', JSON.stringify([newNote]))
     } else {
-      // Create initial empty note
-      createNewNote()
+      createNewNote('blank')
     }
 
-    // Auto-focus the textarea
     textareaRef.current?.focus()
   }, [])
 
-  // Save font size preference
   useEffect(() => {
     localStorage.setItem('quickNoteFontSize', fontSize)
   }, [fontSize])
 
-  // Auto-save to localStorage whenever notes change (only for browser notes)
   useEffect(() => {
     const browserNotes = notes.filter(note => !note.fileHandle)
+    if (notes.length === 0) return
+    localStorage.setItem('quickNotes', JSON.stringify(browserNotes))
+    saveFileMetaForNotes(notes)
     if (browserNotes.length > 0) {
-      localStorage.setItem('quickNotes', JSON.stringify(browserNotes))
       setLastSaved(new Date())
-
-      // Trigger save animation
       setJustSaved(true)
-      setTimeout(() => setJustSaved(false), 2000)
+      const timer = setTimeout(() => setJustSaved(false), 2000)
+      return () => clearTimeout(timer)
     }
   }, [notes])
 
+  useEffect(() => {
+    if (!jumpTo || jumpTo.noteId !== activeNoteId) return
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(jumpTo.start, jumpTo.end)
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 22
+    const line = (el.value.slice(0, jumpTo.start).split('\n').length) - 1
+    el.scrollTop = Math.max(0, (line - 2) * lineHeight)
+    setJumpTo(null)
+  }, [jumpTo, activeNoteId, notes])
+
   const getActiveNote = () => {
     return notes.find(note => note.id === activeNoteId) || {}
+  }
+
+  const showToast = (text) => {
+    setMilestoneText(text)
+    setShowMilestone(true)
+    setTimeout(() => setShowMilestone(false), 2000)
+  }
+
+  const patchNote = (noteId, updater) => {
+    setNotes(prevNotes => sortNotes(prevNotes.map(note => (
+      note.id === noteId ? normalizeNote(updater(note)) : note
+    ))))
   }
 
   const handleOpenFolder = async () => {
@@ -97,15 +161,15 @@ function App() {
         setDirHandle(handle)
         setIsLocalMode(true)
         const localNotes = await readNotesFromDirectory(handle)
+        const withMeta = mergeFolderNotes(localNotes, loadFileMeta())
 
         setNotes(prevNotes => {
-          // Keep existing browser notes, remove any old local notes (if re-opening), and append new local notes
           const browserNotes = prevNotes.filter(note => !note.fileHandle)
-          return [...browserNotes, ...localNotes]
+          return sortNotes([...browserNotes, ...withMeta])
         })
 
-        if (localNotes.length > 0) {
-          setActiveNoteId(localNotes[0].id)
+        if (withMeta.length > 0) {
+          setActiveNoteId(withMeta[0].id)
         }
       }
     } catch (error) {
@@ -114,58 +178,26 @@ function App() {
     }
   }
 
-  const createNewNote = async (isLocal = false) => {
-    if (isLocal && dirHandle) {
-      try {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-        const filename = `Untitled-${timestamp}.md`
-        const fileHandle = await createNoteFile(dirHandle, filename, '')
+  const createNewNote = async (templateId = 'blank') => {
+    const newNote = normalizeNote(applyTemplate({
+      id: Date.now().toString(),
+      lastModified: Date.now(),
+    }, templateId))
 
-        const newNote = {
-          id: filename,
-          title: filename,
-          content: '',
-          lastModified: Date.now(),
-          fileHandle: fileHandle
-        }
-
-        setNotes(prevNotes => [newNote, ...prevNotes])
-        setActiveNoteId(newNote.id)
-      } catch (error) {
-        console.error('Error creating local file:', error)
-        alert('Failed to create new file.')
-      }
-    } else {
-      const newNote = {
-        id: Date.now().toString(),
-        title: 'Untitled Note',
-        content: '',
-        lastModified: Date.now()
-      }
-      // Add to beginning of browser notes (which are usually at the top, but we'll just prepend to list)
-      setNotes(prevNotes => [newNote, ...prevNotes])
-      setActiveNoteId(newNote.id)
-    }
+    setNotes(prevNotes => sortNotes([newNote, ...prevNotes]))
+    setActiveNoteId(newNote.id)
+    setTagFilter(null)
   }
 
   const updateNote = async (key, value) => {
     const activeNote = getActiveNote()
 
-    // Optimistic update
-    setNotes(prevNotes => prevNotes.map(note => {
-      if (note.id === activeNoteId) {
-        const updatedNote = { ...note, [key]: value, lastModified: Date.now() }
-        // Update title if content changes and it's the first line (only for browser notes)
-        if (!note.fileHandle && key === 'content') {
-          const firstLine = value.split('\n')[0]
-          updatedNote.title = firstLine || 'Untitled Note'
-        }
-        return updatedNote
-      }
-      return note
-    }))
+    setNotes(prevNotes => sortNotes(prevNotes.map(note => {
+      if (note.id !== activeNoteId) return note
+      if (key === 'content') return normalizeNote(withContentChange(note, value))
+      return normalizeNote({ ...note, [key]: value, lastModified: Date.now() })
+    })))
 
-    // Persist to file if it's a local note
     if (activeNote.fileHandle && key === 'content') {
       try {
         await saveNoteToFile(activeNote.fileHandle, value)
@@ -189,7 +221,7 @@ function App() {
     const note = notes.find(n => n.id === noteToDelete)
     if (note && note.fileHandle) {
       try {
-        await deleteNoteFile(dirHandle, noteToDelete) // noteToDelete is filename in local mode
+        await deleteNoteFile(dirHandle, noteToDelete)
       } catch (error) {
         console.error('Error deleting file:', error)
         alert('Failed to delete file.')
@@ -200,43 +232,41 @@ function App() {
     setNotes(prevNotes => {
       const newNotes = prevNotes.filter(note => note.id !== noteToDelete)
       if (newNotes.length === 0) {
-        // If all notes deleted, create a new browser note
-        const newNote = {
+        const created = normalizeNote(applyTemplate({
           id: Date.now().toString(),
-          title: 'Untitled Note',
-          content: '',
-          lastModified: Date.now()
-        }
-        setActiveNoteId(newNote.id)
-        return [newNote]
+          lastModified: Date.now(),
+        }, 'blank'))
+        setActiveNoteId(created.id)
+        return [created]
       }
-      // If active note is deleted, switch to the first one
       if (activeNoteId === noteToDelete && newNotes.length > 0) {
-        setActiveNoteId(newNotes[0].id)
+        setActiveNoteId(sortNotes(newNotes)[0].id)
       }
-      return newNotes
+      return sortNotes(newNotes)
     })
 
     setDeleteModalOpen(false)
     setNoteToDelete(null)
   }
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e) => {
-      // Cmd/Ctrl + E for Focus Mode
-      if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        setFocusMode(!focusMode)
+        setSearchOpen(true)
+        return
       }
 
-      // Cmd/Ctrl + D for Download
+      if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+        e.preventDefault()
+        setFocusMode(open => !open)
+      }
+
       if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
         e.preventDefault()
         downloadAsText()
       }
 
-      // Escape to exit focus mode
       if (e.key === 'Escape' && focusMode) {
         setFocusMode(false)
       }
@@ -281,7 +311,6 @@ function App() {
     return lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
-  // Export Functions
   const downloadAsText = () => {
     const activeNote = getActiveNote()
     const blob = new Blob([activeNote.content || ''], { type: 'text/plain' })
@@ -312,12 +341,75 @@ function App() {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(getActiveNote().content || '').then(() => {
-      setMilestoneText('✓ Copied to clipboard!')
-      setShowMilestone(true)
-      setTimeout(() => setShowMilestone(false), 2000)
+      showToast('✓ Copied to clipboard!')
       setShowExportMenu(false)
     })
   }
+
+  const handleBackup = () => {
+    const browserNotes = notes.filter((note) => !note.fileHandle)
+    if (browserNotes.length === 0) {
+      alert('No browser notes to back up. Folder notes already live on disk.')
+      return
+    }
+    const bytes = zipBrowserNotes(browserNotes)
+    const blob = new Blob([bytes], { type: 'application/zip' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `typenow-notes-${new Date().toISOString().split('T')[0]}.zip`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    showToast('✓ Backup downloaded')
+  }
+
+  const handleRestore = async (file) => {
+    try {
+      const buffer = new Uint8Array(await file.arrayBuffer())
+      const restored = unzipBrowserNotes(buffer)
+      if (restored.length === 0) {
+        alert('No markdown notes found in that zip.')
+        return
+      }
+      setNotes((prev) => {
+        const merged = mergeRestoredNotes(prev, restored)
+        setActiveNoteId(merged[0]?.id || activeNoteId)
+        return merged
+      })
+      showToast(`✓ Restored ${restored.length} note${restored.length === 1 ? '' : 's'}`)
+    } catch (error) {
+      console.error(error)
+      alert('Could not restore that zip. Use a TypeNow backup of markdown files.')
+    }
+  }
+
+  const handleJump = (result) => {
+    setTagFilter(null)
+    setActiveNoteId(result.id)
+    setJumpTo({
+      noteId: result.id,
+      start: result.field === 'body' ? result.start : 0,
+      end: result.field === 'body' ? result.end : 0,
+    })
+  }
+
+  const addTagToActive = (event) => {
+    event.preventDefault()
+    const tag = tagDraft.trim()
+    if (!tag) return
+    const active = getActiveNote()
+    if (!active.id) return
+    patchNote(active.id, (note) => {
+      const exists = (note.tags || []).some((item) => item.toLowerCase() === tag.toLowerCase())
+      return exists ? note : toggleTag(note, tag)
+    })
+    setTagDraft('')
+  }
+
+  const activeNote = getActiveNote()
+  const knownTags = collectTags(notes)
 
   return (
     <div className="app">
@@ -325,10 +417,17 @@ function App() {
         <Sidebar
           notes={notes}
           activeNoteId={activeNoteId}
+          tagFilter={tagFilter}
           onSelectNote={setActiveNoteId}
-          onCreateNote={() => createNewNote()}
+          onCreateNote={createNewNote}
           onDeleteNote={deleteNote}
           onOpenFolder={handleOpenFolder}
+          onRenameNote={(noteId, title) => patchNote(noteId, (note) => ({ ...note, title, lastModified: Date.now() }))}
+          onTogglePin={(noteId) => patchNote(noteId, (note) => ({ ...note, pinned: !note.pinned, lastModified: Date.now() }))}
+          onSearch={() => setSearchOpen(true)}
+          onBackup={handleBackup}
+          onRestore={handleRestore}
+          onTagFilter={setTagFilter}
           isLocalMode={isLocalMode}
           dirName={dirHandle?.name}
         />
@@ -337,11 +436,48 @@ function App() {
           <header className={`header ${focusMode ? 'hidden' : ''}`}>
             <div className="header-content">
               <div className="title-section">
-                <h1 className="title">Quick Notes</h1>
-                <p className="subtitle">Notes are stored in your browser</p>
+                <input
+                  className="note-title-input"
+                  value={activeNote.title || ''}
+                  onChange={(event) => updateNote('title', event.target.value)}
+                  placeholder="Note title"
+                  aria-label="Note title"
+                />
+                <p className="subtitle">qnote keeps notes on your device unless you open a folder</p>
+                <div className="active-tags">
+                  {(activeNote.tags || []).map((tag) => (
+                    <button
+                      key={tag}
+                      className="tag-chip active"
+                      onClick={() => patchNote(activeNote.id, (note) => toggleTag(note, tag))}
+                      title="Remove tag"
+                    >
+                      {tag} ×
+                    </button>
+                  ))}
+                  {knownTags
+                    .filter((tag) => !(activeNote.tags || []).some((item) => item.toLowerCase() === tag.toLowerCase()))
+                    .map((tag) => (
+                      <button
+                        key={tag}
+                        className="tag-chip"
+                        onClick={() => patchNote(activeNote.id, (note) => toggleTag(note, tag))}
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  <form className="tag-add-form" onSubmit={addTagToActive}>
+                    <input
+                      className="tag-add-input"
+                      value={tagDraft}
+                      onChange={(event) => setTagDraft(event.target.value)}
+                      placeholder="Add tag"
+                      aria-label="Add tag"
+                    />
+                  </form>
+                </div>
               </div>
               <div className="header-actions">
-                {/* Font Size Controls */}
                 <div className="font-size-controls">
                   <button
                     className={`font-btn ${fontSize === 'small' ? 'active' : ''}`}
@@ -366,7 +502,6 @@ function App() {
                   </button>
                 </div>
 
-                {/* Export Menu */}
                 <div className="export-menu-container">
                   <button
                     onClick={() => setShowExportMenu(!showExportMenu)}
@@ -391,7 +526,6 @@ function App() {
                   )}
                 </div>
 
-                {/* Preview Mode Toggle */}
                 <button
                   onClick={() => setIsPreviewMode(!isPreviewMode)}
                   className={`preview-btn ${isPreviewMode ? 'active' : ''}`}
@@ -401,7 +535,6 @@ function App() {
                   <span className="btn-text">Preview</span>
                 </button>
 
-                {/* Focus Mode Toggle */}
                 <button
                   onClick={() => setFocusMode(!focusMode)}
                   className="focus-btn"
@@ -411,7 +544,6 @@ function App() {
                   <span className="btn-text">Focus</span>
                 </button>
 
-                {/* Clear Button */}
                 <button onClick={handleClear} className="clear-btn" title="Clear all content">
                   <span className="btn-icon">✕</span>
                   <span className="btn-text">Clear</span>
@@ -424,7 +556,7 @@ function App() {
             <textarea
               ref={textareaRef}
               className={`editor font-${fontSize} ${focusMode ? 'focus-mode' : ''} ${isPreviewMode ? 'split-left' : ''}`}
-              value={getActiveNote().content || ''}
+              value={activeNote.content || ''}
               onChange={handleChange}
               placeholder="Start typing..."
               spellCheck="true"
@@ -433,7 +565,7 @@ function App() {
             {isPreviewMode && (
               <div className={`markdown-preview font-${fontSize} split-right`}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {getActiveNote().content || ''}
+                  {activeNote.content || ''}
                 </ReactMarkdown>
               </div>
             )}
@@ -452,7 +584,7 @@ function App() {
 
             {!focusMode && (
               <div className="keyboard-hint">
-                Press <kbd>Cmd</kbd> + <kbd>E</kbd> for focus mode
+                <kbd>Cmd</kbd> + <kbd>K</kbd> search · <kbd>Cmd</kbd> + <kbd>E</kbd> focus
               </div>
             )}
           </main>
@@ -482,6 +614,13 @@ function App() {
           </footer>
         </div>
       </div>
+
+      <SearchPalette
+        notes={notes}
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onJump={handleJump}
+      />
 
       <ConfirmationModal
         isOpen={deleteModalOpen}

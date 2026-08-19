@@ -1,0 +1,7 @@
+name = "typenow-app"
+compatibility_date = "2025-11-02"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "./dist"
+
+[vars]
+POLAR_SERVER = "production"

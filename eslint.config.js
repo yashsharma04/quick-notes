@@ -7,7 +7,26 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
+    files: [
+      'src/polar/**/*.js',
+      'src/notes/**/*.js',
+      'functions/**/*.js',
+      'vite-plugin-polar.js',
+    ],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.node,
+      sourceType: 'module',
+    },
+  },
+  {
     files: ['**/*.{js,jsx}'],
+    ignores: [
+      'src/polar/**',
+      'src/notes/**',
+      'functions/**',
+      'vite-plugin-polar.js',
+    ],
     extends: [
       js.configs.recommended,
       reactHooks.configs['recommended-latest'],

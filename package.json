@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/polar/*.test.js src/notes/*.test.js"
   },
   "dependencies": {
+    "@polar-sh/sdk": "^0.49.0",
+    "fflate": "^0.8.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",

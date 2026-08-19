@@ -4,11 +4,56 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="A fast, minimal note-taking app that saves automatically to your browser" />
-    <title>Quick Notes - Instant Note Taking</title>
+    <title>qnote — private notes in the browser</title>
+    <meta
+      name="description"
+      content="qnote is a free notepad in your browser. No accounts, no cloud. Notes stay on your device."
+    />
+    <link rel="canonical" href="https://qnote.online/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://qnote.online/" />
+    <meta property="og:title" content="qnote — private notes in the browser" />
+    <meta
+      property="og:description"
+      content="A free notepad in your browser. No accounts, no cloud. Notes stay on your device."
+    />
+    <meta property="og:site_name" content="qnote" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="qnote — private notes in the browser" />
+    <meta
+      name="twitter:description"
+      content="A free notepad in your browser. No accounts, no cloud. Notes stay on your device."
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "qnote",
+        "url": "https://qnote.online/",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "description": "qnote is a free notepad in your browser. No accounts, no cloud. Notes stay on your device."
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main>
+        <h1>qnote</h1>
+        <p>
+          A free notepad in your browser. No accounts and no cloud sync. Notes
+          stay on your device.
+        </p>
+        <p><a href="/about.html">About qnote</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
